@@ -54,6 +54,29 @@ class Model:
     Clase de modelo abstracta
     Crear tantas clases que hereden de esta clase como  
     colecciones/modelos se deseen tener en la base de datos.
+    Model es la clase que tiene el comportamineto base de cada Coleccion.
+
+    Mondo db frente a BD relacional
+    -----
+    Colección -> Tabla
+    Documento -> Fila
+    Campo -> Columna
+
+    Ej Documento: 
+    {
+        "_id": "...",
+        "nombre": "WiZink Center",
+        "direccion": "Avenida de Felipe II, Madrid",
+        "aforo": 17000,
+        "servicios": ["aparcamiento", "guardarropa"]
+    }
+    Luego una coleccion seran varios documentos, haciendo una tabla.
+
+    Base de datos: abd
+    Colección: Recinto
+    Clase Python: Recinto(Model)
+    Objeto Python: recinto1
+    Documento MongoDB: datos de un recinto concreto
 
     Attributes
     ----------
@@ -63,6 +86,16 @@ class Model:
             conjunto de atributos admitidos por el modelo
         db : pymongo.collection.Collection
             conexion a la coleccion de la base de datos
+    -----------
+        _required_vars   → campos que deben aparecer
+        _admissible_vars → campos opcionales permitidos
+        _db              → colección concreta de MongoDB
+        _location_var    → campo que contiene la dirección
+        _internal_vars   → variables internas que no se guardan como datos
+        _data            → datos concretos de cada objeto
+        _modified_vars   → campos que el objeto ha modificado
+        _id              → identidad del documento en MongoDB, (LO AÑADIMOS NOSOTROS, no estaba antes, Evita que id termine dentro de data.)
+         
     
     Methods
     -------
@@ -92,7 +125,11 @@ class Model:
     _admissible_vars: set[str]
     _location_var: str | None = None
     _db: pymongo.collection.Collection
-    _internal_vars: set[str] = frozenset(('_modified_vars', '_required_vars', '_admissible_vars', '_db', '_data', '_location_var'))
+
+    # Importante!: nosotros añadimos el atributo _id a nuestras variables internas para que __setattr__ lo almacene 
+    # directamente en el objeto y no dentro de _data.Este atributo identifica el documento en MongoDB y no debe
+    # validarse ni actualizarse como un campo normal.
+    _internal_vars: set[str] = frozenset(('_id','_modified_vars', '_required_vars', '_admissible_vars', '_db', '_data', '_location_var'))
 
     def __init__(self, **kwargs: dict[str, str | dict | list]) -> None:
         """
@@ -100,23 +137,91 @@ class Model:
         Comprueba que los valores proporcionados en kwargs son admitidos
         por el modelo y que las atributos requeridos son proporcionadas.
 
+        -> None, este metodo no devuelve ningun valor. El trabajod e esta función es inicializar el objeto preparando sus atribuos.
+
         Parameters
         ----------
+            self, el objeto concreto que se está construyendo. Por ejemlo a "Recinto"
             kwargs : dict[str, str | dict]
                 diccionario con los valores de las atributos del modelo
+            **kwargs, Recoge todos los argumentos con nombre que no estén declarados individualmente y guárdalos en un diccionario
         """
-        self._data: dict[str, str | dict | list] = {}
-        #TODO
-        # Realizar las comprabociones y gestiones necesarias
-        # antes de la asignacion.
 
-        # Asigna todos los valores en kwargs a las atributos con 
-        # nombre las claves en kwargs
-        # Utilizamos el atributo data para guardar los variables 
-        # almacenadas en la base de datos en una solo atributo
-        # Encapsular los datos en una sola variable facilita la 
-        # gestion en metodos como save.
+        # 1 · Inicializar las variables internas
+
+        # Se crea dentro del objeto actual (self) el atributo (_data).
+        # [str, str | dict | list], Las claves serán textos y los valores podrán ser textos, diccionarios o listas.
+        # Se inicializa vacio = {}
+        self._data: dict[str, str | dict | list] = {}
+
+        # Se crea dentro del objeto actual (self) el atributo (_modified_vars).
+        # set[str], Las variables seran texto.
+        # Se inicializa vacio mediante = set().
+        self._modified_vars: set[str] = set()
+
+        # Se busca "_id" dentro de kwargs, luego si existe lo extrae y lo guarda en self_id. 
+        # Eliminandolo finalmente de kwargs. Si no existe utiliza None.
+        if "_id" in kwargs:
+            document_id = kwargs["_id"]
+            del kwargs["_id"]
+        else:
+         document_id = None
+     
+        # Se crea dentro del objeto actual (self) el atributo (_id) que hemos añadido nosotros extra.
+        # Si document_id es None o ObjectId que
+        self._id: ObjectId | None = document_id
+
+        # 2 · Obtener las claves de kwargs y almacenarlas en una variable:
+
+        # Se crea la variable temporal "received_vars" para esta función.
+        # Variable que se va a utilizar para almacenar las variables que se han enviado en el kwargs.
+        received_vars = set(kwargs)
+
+        # 3 · Avisar de los campos obligatorios de "received_vars" que no estan:
+
+        # Vamos a definir la variable temporal "missing_vars" para esta función.
+        # Variable que se va a utilizar para comprobar si la diferencia entre las claves del diccionario de 
+        # las variables requeridas y las recibidas mediante kwargs. 
+        # Todos los campos obligatorios deben estar incluidos en los campos recibidos.    
+        missing_vars = self._required_vars - received_vars       
+
+        # Lo que hacemos ahora es comporbar si en missing_vars ha quedado algo, en el caso
+        # en que haya quedado algo que sera la variable que falta, lanzara uan excepcion de tipo ValueError mandando la variable que falta.
+        # Ya que lo correcto es que las dos variables "required_vars" y "received_vars"
+        # sean de la misma longitud y tengan las mismas claves para que se puedan procesar los datos.
+        if missing_vars:
+            missing_text = ", ".join(sorted(missing_vars))
+            raise ValueError(
+                f"Faltan atributos obligatorios: {missing_text}"
+            )
+
+        # 4 · Avisar de los campos no permitidos.
+
+        # Vamos a alamacenar en una sola variable temporal todos las variables requeridas y admisibles del modelo.
+        # Con | lo que se hace es hacer una union de los dos conjuntos de variables.
+        allowed_vars = self._required_vars | self._admissible_vars
+
+        # Almacenamos ahora en otra variable remporal la diferencia entre las variables recividas y las permitidas.
+        # De esta forma si hemso recibido una variable que no existe en la diferencia quedará esta variable extra no permitida.
+        invalid_vars = received_vars - allowed_vars
+
+        # Como antes, si hay algun resto en la variable "invalid_vars", el condicionañ se activa
+        # y se va a devolver una excepcion de tipo AtribiteError con un mensaje que avisa que no se permite
+        # la variable del resto que no esta entre las nuestras.
+        if invalid_vars:
+            invalid_text = ", ".join(sorted(invalid_vars))
+            raise AttributeError(
+                f"Atributos no admitidos: {invalid_text}"
+            )
+
+        # 5 · Guardar todos los datos validos.
+
+        # Una vez validados, se copian en _data los campos recibidos
+        # para este objeto/documento.
         self._data.update(kwargs)
+
+
+        
 
     def __setattr__(self, name: str, value: str | dict) -> None:
         """ Sobreescribe el metodo de asignacion de valores a los 
@@ -296,6 +401,21 @@ class ModelCursor:
         #TODO
         pass #No olvidar eliminar esta linea una vez implementado
 
+    '''
+    --------------
+    Orden de ejecución real
+    1. initApp()
+    ↓
+    2. Lee models.yml
+    ↓
+    3. Crea las clases Recinto, Artista, Evento y Asistente
+    ↓
+    4. init_class() configura cada clase
+    ↓
+    5. Más adelante se crea un objeto
+    ↓
+    6. Model.__init__() valida sus datos
+    '''
 
 def initApp(definitions_path: str = "./models.yml", mongodb_uri="mongodb://localhost:27017/", db_name="abd", scope=globals()) -> None:
     """ 
