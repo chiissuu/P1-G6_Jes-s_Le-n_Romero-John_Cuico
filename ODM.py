@@ -38,12 +38,15 @@ def getLocationPoint(address: str) -> Point:
             #TODO
             # Es necesario proporcionar un user_agent para utilizar la API
             # Utilizar un nombre aleatorio para el user_agent
-            location = Nominatim(user_agent="Mi-Nombre-Aleatorio").geocode(address)
+            location = Nominatim(user_agent="g6-utad").geocode(address)
         except GeocoderTimedOut:
             # Puede lanzar una excepcion si se supera el tiempo de espera
             # Volver a intentarlo
             continue
     #TODO
+    if(location == None):
+        raise ValueError("No se pudieron obtener coordenadas")
+    return Point((location.longitude, location.latitude))
     # Devolver un GeoJSON de tipo punto con la latitud y longitud almacenadas.
     # Si no se consiguieron coordenadas, lanzar ValueError: la funcion no puede
     # devolver un punto inventado ni None silenciosamente. Es lo que espera la
