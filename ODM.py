@@ -1,6 +1,5 @@
 __author__ = 'Pablo Ramos Criado'
-__students__ = 'Nombres_y_Apellidos'
-
+__students__ = 'John Cuico y Jesús León' 
 
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut
@@ -319,18 +318,47 @@ def initApp(definitions_path: str = "./models.yml", mongodb_uri="mongodb://local
     """
     #TODO
     # Inicializar base de datos
-
+    # LLamar al servidor con MongoClient porque ya están importadas la librerías de mongo arriba.
+    # Mongoclient(direccion del servidor, version de Mongo Db que
+    # sirve para que si se actualice Mongo siga funcionando)
+    client = MongoClient(mongodb_uri, server_api = ServerApi('1'))
+    # elegir la base dentro del servidor
+    db = client[db_name]
+    
     #TODO
     # Declarar tantas clases modelo colecciones existan en la base de datos
     # Leer el fichero de definiciones de modelos para obtener las colecciones,
     # indices y los atributos admitidos y requeridos para cada una de ellas.
+    
+    # Con open(ruta, .. ) abrimos el archivo en esa ruta y con el encoding = utf-8 es
+    # para decirle como estan guardadas las letras para casos como la Ñ y tildes.
+	# con "with as ... f" abrimos el archivo y lo llamamos f mientras lo usamos
+    # se cierra solo al terminar el bloque
+    with open(definitions_path, encoding="utf-8") as f:
+        # guardamos en datos, le pasamos f que es el yaml y lo lee como si fuera un diccionario
+        # y el safe_load es para que no ejecute nada raro que haya en el archivo escondido.
+        datos  = yaml.safe_load(f)
+
+	# declaramos dos variables nombre y config donde les metemos tantos diccionarios haya.
+    # Ejemplo:  ("Recinto", {"required_vars": [...]})
+    #           ("Artista", {"required_vars": [...]}) 
+    # nombre = Recinto // config = la configuración de recinto 
+    # así hasta terminar el bucle
+    for nombre, config in datos.items():
+        # Con type() creamos una clase nueva, que le pasamos el nombre que queremos y 
+        # (Model,) es una lista que no se puede cambiar(tupla) y 
+		# por ultimo un diccionario vacío {}
+        # todo esto lo guadamos en una variable diccionario llamada scope recibida de la funcion.
+        scope[nombre] = type(nombre, (Model,),{})    
+
+	# Profe
     # Ejemplo de declaracion de modelo para colecion llamada MiModelo
-    scope["MiModelo"] = type("MiModelo", (Model,),{})
+    # scope["MiModelo"] = type("MiModelo", (Model,),{})
     # La clase se declara en tiempo de ejecucion y queda en scope, que no tiene
     # por que ser el espacio de nombres global: las pruebas le pasan su propio
     # diccionario. Por eso se inicializa a traves de scope y no por su nombre,
     # que ahi todavia no existe.
-    scope["MiModelo"].init_class(db_collection=None, indexes=None, required_vars=None, admissible_vars=None)
+    # scope["MiModelo"].init_class(db_collection=None, indexes=None, required_vars=None, admissible_vars=None)
 
 if __name__ == '__main__':
     
