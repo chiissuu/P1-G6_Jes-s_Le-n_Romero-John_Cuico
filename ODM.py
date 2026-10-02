@@ -1,5 +1,5 @@
 __author__ = 'Pablo Ramos Criado'
-__students__ = 'Nombres_y_Apellidos'
+__students__ = 'Jesús_León_Romero_John_Christian_Cuico'
 
 
 from geopy.geocoders import Nominatim
@@ -192,7 +192,7 @@ class Model:
         if missing_vars:
             missing_text = ", ".join(sorted(missing_vars))
             raise ValueError(
-                f"Faltan atributos obligatorios: {missing_text}"
+                f"Faltan campos obligatorios: {missing_text}"
             )
 
         # 4 · Avisar de los campos no permitidos.
@@ -206,12 +206,12 @@ class Model:
         invalid_vars = received_vars - allowed_vars
 
         # Como antes, si hay algun resto en la variable "invalid_vars", el condicionañ se activa
-        # y se va a devolver una excepcion de tipo AtribiteError con un mensaje que avisa que no se permite
+        # y se va a devolver una excepcion de tipo AttributeError con un mensaje que avisa que no se permite
         # la variable del resto que no esta entre las nuestras.
         if invalid_vars:
             invalid_text = ", ".join(sorted(invalid_vars))
             raise AttributeError(
-                f"Atributos no admitidos: {invalid_text}"
+                f"Campo no admitido en este modelo: {invalid_text}"
             )
 
         # 5 · Guardar todos los datos validos.
@@ -221,22 +221,71 @@ class Model:
         self._data.update(kwargs)
 
 
-        
 
     def __setattr__(self, name: str, value: str | dict) -> None:
-        """ Sobreescribe el metodo de asignacion de valores a los 
+        """ · Sobreescribe el metodo de asignacion de valores a los 
         atributos del objeto con el fin de controlar que atributos 
-        son modificados y cuando son modificados.
+        son modificados y cuando son modificados. 
+        · Es un método especial de Python que se ejecuta automáticamente cada 
+        vez que se asigna un valor a un atributo de un objeto. 
+        · Si __init__ se parece al constructor de Java, __setattr__ se parece a un 
+        controlador general de todos los setters del objeto.
+        · __setattr__ Se ejecuta cada vez que hacemos una asignación 
+        mediante el punto: recinto.nombre = "Nuevo nombre"
+        · Parametros, EJ: recinto.aforo = 2500. Recinto, el objeto, self. aforo, la variable, name. 2500, el valor, value.
         """
+
+        # 1 · Si la variable name es interna:
+
+        # Modificar una variable interna. Por ejemplo si se hace: self._data = {}, realmente
+        # se esta haciendo: self.__setattr__("_data", {}).
+        # Si el nombre de la variable esta en las variables internas, se pide
+        # al padre (el objeto) que ejecute la asignacion normal de Python para que no exista un recursion infinita de llamadas al mismo __setattr__
         if name in self._internal_vars:
             super().__setattr__(name, value)
             return
-        #TODO
-        # Realizar las comprabociones y gestiones necesarias
-        # antes de la asignacion.
 
-        # Asigna el valor value a la variable name
+        # 2 · Obtener los campso permitidos:
+ 
+        # Creamos una variable temporal que almacenara los campos validos. Que son los campos
+        # obligatorios y los opcionales. Por ende se hace una union de dos conjuntos con "|".
+        allowed_vars = self._required_vars | self._admissible_vars
+
+        # 3 · Comprobar name, el nombre de la variable pasada para asignarle un valor:
+
+        # Si name no esta entre los campos obligatorios u opcionales del modelo actual,
+        # Se lanza una excepcion de tipo "AttributeError" avisando de que el campo que se ha pasado no esta entre
+        # las variables del programa, las variables permitidas.
+        if name not in allowed_vars:
+            raise AttributeError(
+                f"El campo '{name}' no esta entre los campos permitidos del modelo"
+            )
+
+        # 4 · Comprobar si el value del la variable name ha cambiado respecto al value que tenia anteriormente:
+        
+        # Lo primero que hay que saber es si la variable ya tiene un valor presente. 
+        # Se utiliza un objeto único object() como marcador para distinguir entre
+        # un campo inexistente y un campo cuyo valor sea realmente None.
+        missing = object()
+        previous_value = self._data.get(name, missing)
+
+        # Si el valor anterior de la variable name recogido es igual al nuevo enviado. 
+        # Se retorna ya que no hay ningún cambio que hacer.
+        if previous_value is not missing and previous_value == value:
+            return
+
+        # 5 · Registramos el campo modificado. 
+
+        # Si el campo es nuevo o su valor ha cambiado, se registra su nombre
+        # en _modified_vars. save() utilizará posteriormente este conjunto
+        # para actualizar en MongoDB únicamente los campos modificados.
+        self._modified_vars.add(name)
+
+        # 6 · Finalmente, guardamos el nuevo value de la variable name en el documento.
+
         self._data[name] = value
+
+
 
     def __getattr__(self, name: str) -> Any:
         """ Sobreescribe el metodo de acceso a atributos del objeto
@@ -253,10 +302,10 @@ class Model:
     def save(self) -> None:
         """
         Guarda el modelo en la base de datos
-        Si el modelo no existe en la base de datos, se crea un nuevo
-        documento con los valores del modelo. En caso contrario, se
-        actualiza el documento existente con los nuevos valores del
-        modelo.
+        Si el modelo no existe en la base de datos, no tiene _id, se crea un nuevo
+        documento con los valores del modelo. 
+        En caso contrario, si ya tiene _id, se actualiza el documento existente 
+        con los nuevos campos registrados en _modified_vars del modelo.
         """
         #TODO
         pass #No olvidar eliminar esta linea una vez implementado
