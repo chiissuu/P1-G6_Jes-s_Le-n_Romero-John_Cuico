@@ -469,7 +469,18 @@ def initApp(definitions_path: str = "./models.yml", mongodb_uri="mongodb://local
         # (Model,) es una lista que no se puede cambiar(tupla) y 
 		# por ultimo un diccionario vacío {}
         # todo esto lo guadamos en una variable diccionario llamada scope recibida de la funcion.
-        scope[nombre] = type(nombre, (Model,),{})    
+        scope[nombre] = type(nombre, (Model,), {})
+
+        # Configuramos la clase recién creada con su colección de MongoDB y
+        # con los campos obligatorios y opcionales definidos en el YAML.
+        # init_class recibe conjuntos, por eso convertimos las listas del YAML
+        # mediante set(). Si una clave no existe, get() devuelve una lista vacía.
+        scope[nombre].init_class(
+            db_collection=db[nombre],
+            indexes={},
+            required_vars=set(config.get("required_vars", [])),
+            admissible_vars=set(config.get("admissible_vars", []))
+        )
 
 	# Profe
     # Ejemplo de declaracion de modelo para colecion llamada MiModelo
