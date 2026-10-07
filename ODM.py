@@ -254,14 +254,143 @@ class Model:
         
     def save(self) -> None:
         """
-        Guarda el modelo en la base de datos
-        Si el modelo no existe en la base de datos, se crea un nuevo
-        documento con los valores del modelo. En caso contrario, se
-        actualiza el documento existente con los nuevos valores del
-        modelo.
+        Esta función save(self), guarda el modelo en la base de datos.
+
+        1. Si el modelo no existe en la base de datos, se crea un nuevo
+        documento con los valores del modelo. 
+        
+        2. En el otro caso, se actualiza el documento existente con 
+        los nuevos valores delmodelo.
+
+        --- Flujo de la funcion real para entendimiento ---
+
+        El objeto tiene _id
+                ↓
+            ¿Hay campos modificados?
+                ├── No → return
+                └── Sí
+                    ↓
+                construir changes
+                    ↓
+                ¿Cambió la dirección?
+                    ├── Sí → recalcular el Point
+                    └── No → continuar
+                    ↓
+                update_one()
+                    ↓
+                vaciar _modified_vars
+       
         """
-        #TODO
-        pass #No olvidar eliminar esta linea una vez implementado
+
+        # 1.1 · Comprobar si objeto (self) es nuevo.
+
+        # Si el _id de este Objeto tiene, None -> Se considera que el objeto es nuevo.
+        # Si el _id de este Objeto tiene, ObjectId -> Se considera que ya se ha implmentado.
+
+        if self._id is None: 
+
+            # Creamos una copia con dict() de los datos _data que tiene el documento que se nos ha pasado.
+            # Almacenamos todos estos datos en un nuevo documento "copia".
+            # La finalidad de esta copia es el preparar el diccionario que le vamos a enviar a mongoDB
+            # sin trabajar sobre _data. Evitando que el _id de PyMongo añade automaticamnete durante el insert_one()
+            # termien dentro de _data.
+            copia = dict(self._data)
+
+            # 1.2 · Generamos la localizacion geografica SOLO si el modelo lo tiene configurado.
+
+            # Solo generamos el punto geográfico si el modelo tiene configurado un campo de localización 
+            # y este campo esta presente en sus datos.
+            if(self._location_var is not None and self._location_var in self._data):
+
+                # Para que este ODM sea generico, tenemos que tener en cuenta que no podemos llamar direcamente
+                # a una variabel como queramos, se llamara como se halla definido en el modelo. En el caso de la direccion
+                # el modelo puede tener addrres direcion o ubicacion, etc. Por ello tenemos que asignar en una variable
+                # temporal el nombre de la variable geografica que es comos e halla definido el nombre de la variable
+                # de la direccion + loc.
+                location_field = f"{self._location_var}_loc"
+
+                # Guardamos en una variable temporal
+                # la llamada a la funcion getLocationPoint pasandole de parametro
+                # la variable de localizacion en string que se halla en el data del modelo. 
+                # Esta función lo que va a hacer es delvolver un Point con las coordenadas geograficas de la
+                # direccion que le hemos enviado. Ej: Point((-3.6718, 40.4242)), (longitud, latitud).
+                location_point = getLocationPoint(self._data[self._location_var])
+
+                # Añadimos al documento copia la variable direccion_loc con el valor Point.
+                copia[location_field] = location_point
+
+                # Guardamos el punto también en _data para que el objeto Python
+                # mantenga los mismos campos que el documento insertado en MongoDB.
+                self._data[location_field] = location_point
+
+            # 1.3 · Insertamos el modelo nuevo en MongoDB
+
+            # Insertamos la copia como un documento nuevo en la colección de
+            # MongoDB asociada a este modelo. El resultado contiene el _id generado.
+            result = self._db.insert_one(copia)
+
+            # Como la copia no tenía _id, PyMongo genera automáticamente un
+            # ObjectId único. Lo guardamos en self._id para identificar el documento            
+            self._id = result.inserted_id
+
+            # Como ya se han guardado todos los datos necesarios, con .clear()
+            # se limpian todos el conjunto existente en este campo.
+            self._modified_vars.clear() 
+
+            # Hacemos return para que esta no se ejecute las siguiente operaciones
+            # ya que ya se ha insertado el nuevo documento. Y no queremos seguir con lo siguiente
+            # por que actualiza documentos existentes.
+            return
+
+        # 2.1 · Comporbar si existen cambios pendientes.
+
+        # Si el objeto ya existe en MongoDB pero no tiene campos en modified vars,
+        # no es necesario ejecutar ninguna actualización.
+        if not self._modified_vars:
+            return
+
+        # 2.2 · Preparar los campos que se tiene que actualizar.
+
+        # Vamos a crear un diccionario que contenga los cambios a hacer, para ello vamos a añadirle 
+        # todas las variables modificadas con su valor.
+        cambios = {
+            name: self._data[name]
+            for name in self._modified_vars
+        }
+
+        # 2.3 · Recalcular la localizacion si se ha modificado su campo base.
+
+        # SI el modelo tiene la localizacion Y se ha moficado el campo base. El campo esta en los campos modificados.
+        if (self._location_var is not None and self._location_var in self._modified_vars ):
+
+            # Vamos a construir como antes el nombre generico para el campo loc.
+            location_field = f"{self._location_var}_loc"
+           
+            # Volvemos a obtener las coordenadas  geograficas Point de la nueva dirección.
+            location_point = getLocationPoint(self._data[self._location_var])
+
+            # Añadimos al documento copia la variable direccion_loc con el valor Point.
+            self._data[location_field] = location_point
+
+            # Y vamos a almacenar esta variable de localizacion en los cambios que enviaremos a MongoDB
+            cambios[location_field] = location_point
+
+
+        # 2.4 · Actualizar el documento de MongoDB
+
+        # Buscamos el documento utilizando su _id y modificamos únicamente
+        # los campos incluidos en el diccionario "cambios".
+        # .update_one funciona de forma que el primer parametro es el diccionario que debe buscar para modificar
+        # y el segundo la operacion de actualizacion, modificando los cambios pasados ingnorando los demas del documento.
+        self._db.update_one(
+            {"_id": self._id},
+            {"$set": cambios}
+        )
+
+        # 2.5 · Como ya se han guardado todos los datos necesarios,
+        # con .clear() se limpian todos el conjunto existente en este campo.
+        self._modified_vars.clear()
+
 
     def delete(self) -> None:
         """
