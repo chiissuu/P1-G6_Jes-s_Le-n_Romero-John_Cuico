@@ -223,6 +223,15 @@ class Model:
         #TODO
         pass
 
+
+	# Esta funcion sirve para rellenar las clases creadas en Initapp
+    # db_collection = la coleccion de mongo donde se guardarán los documentos
+    # required_vars = atributos obligatorios de la clase
+    # admissible_vars = atributos opcionales permitidos de la clase
+    # indexes =  los indices
+    # init_class pide los datos config en set, que es un conjunto y no una lista
+	# un conjunto sirve para preguntar constantemente si ese atributo esta rellenado o no 
+	# y tambien porque no admite atributos repetidos.
     @classmethod
     def init_class(cls, db_collection: pymongo.collection.Collection, indexes:dict[str,str], required_vars: set[str], admissible_vars: set[str]) -> None:
         """ 
@@ -242,15 +251,23 @@ class Model:
             admissible_vars : set[str] 
                 Set de atributos admitidos por el modelo
         """
+
+		# Le asignamos a clase que es cls todo los atributos de cada una de 
+        # las clases que queremos usar 
+		# y en que base de datos estan todas las clases hechas.
         cls._db = db_collection
         cls._required_vars = required_vars
         cls._admissible_vars = admissible_vars
+        
         # TODO
         # Recorrer indexes y crear cada índice segun su tipo: 'unique', 'asc'
         # y 'geosphere'. Comparar el tipo por igualdad, no con el operador 'in'.
         # Ojo con el índice geoespacial: save() guarda el GeoJSON Point en
         # <campo>_loc, luego el índice 2dsphere va sobre <campo>_loc, mientras
         # que _location_var debe guardar el nombre del campo base.
+        
+
+
 
 
 class ModelCursor:
@@ -350,7 +367,23 @@ def initApp(definitions_path: str = "./models.yml", mongodb_uri="mongodb://local
 		# por ultimo un diccionario vacío {}
         # todo esto lo guadamos en una variable diccionario llamada scope recibida de la funcion.
         scope[nombre] = type(nombre, (Model,),{})    
-
+		# llamamos a init class para que rellene la clase
+        scope[nombre].init_class(
+            # db[nombre] es la colección de MongoDB con el mismo nombre que el modelo
+			# (ej: db["Recinto"]). Ahí se guardarán los documentos de esta clase.
+            db_collection = db[nombre], 
+            # A indices le pasamos un diccionario vacio para rellenarlo mas tarde.
+		    indexes = {}, 
+            # init_class recibe sets que covierten las lista YAML en un conjunto:
+            # sin repetidos y rapidos para preguntar sobre las atributos permitidos.
+            # Una vez dentro en vez de forma de lista config[required_vars] se lo pasamos con get.
+            # así si no existe ese atributo no da error y solo crea uno vacío.
+            required_vars = set(config.get("required_vars", [])),
+            admissible_vars = set(config.get("admissible_vars", []))
+        )
+	
+	
+	
 	# Profe
     # Ejemplo de declaracion de modelo para colecion llamada MiModelo
     # scope["MiModelo"] = type("MiModelo", (Model,),{})
@@ -358,7 +391,8 @@ def initApp(definitions_path: str = "./models.yml", mongodb_uri="mongodb://local
     # por que ser el espacio de nombres global: las pruebas le pasan su propio
     # diccionario. Por eso se inicializa a traves de scope y no por su nombre,
     # que ahi todavia no existe.
-    # scope["MiModelo"].init_class(db_collection=None, indexes=None, required_vars=None, admissible_vars=None)
+    
+	
 
 if __name__ == '__main__':
     
